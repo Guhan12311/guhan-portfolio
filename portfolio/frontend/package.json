@@ -30,7 +30,7 @@
     "three": "^0.170.0"
   },
   "devDependencies": {
-    "@next/swc-win32-x64-msvc": "^16.2.6",
+    
     "@types/node": "^20.17.10",
     "@types/nodemailer": "^6.4.17",
     "@types/react": "^18.3.12",
