@@ -1,0 +1,96 @@
+version: '3.9'
+
+services:
+  # ─── MongoDB ────────────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7.0
+    container_name: portfolio_mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: portfolio_secret
+      MONGO_INITDB_DATABASE: portfolio
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo_data:/data/db
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/init.js:ro
+    networks:
+      - portfolio_network
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ─── Backend ─────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: portfolio_backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      MONGODB_URI: mongodb://admin:portfolio_secret@mongo:27017/portfolio?authSource=admin
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      EMAIL_USER: ${EMAIL_USER}
+      EMAIL_PASS: ${EMAIL_PASS}
+      FRONTEND_URL: http://localhost:3000
+    ports:
+      - '5000:5000'
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - portfolio_network
+    volumes:
+      - ./backend/src:/app/src:ro
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:5000/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ─── Frontend ─────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        GEMINI_API_KEY: ${GEMINI_API_KEY}
+        NEXT_PUBLIC_API_URL: http://localhost:5000
+        NEXT_PUBLIC_GITHUB_USERNAME: guhan-a
+        NEXT_PUBLIC_SITE_URL: http://localhost:3000
+        MONGODB_URI: mongodb://admin:portfolio_secret@mongo:27017/portfolio?authSource=admin
+        EMAIL_USER: ${EMAIL_USER}
+        EMAIL_PASS: ${EMAIL_PASS}
+    container_name: portfolio_frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: http://localhost:5000
+    ports:
+      - '3000:3000'
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - portfolio_network
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3000']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  mongo_data:
+    driver: local
+
+networks:
+  portfolio_network:
+    driver: bridge
